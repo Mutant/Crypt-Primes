@@ -7,7 +7,7 @@
 ## This code is free software; you can redistribute it and/or modify
 ## it under the same terms as Perl itself.
 ##
-## $Id: Primes.pm,v 0.38 2000/11/09 16:20:41 vipul Exp vipul $
+## $Id: Primes.pm,v 0.46 2001/03/04 18:26:03 vipul Exp vipul $
 
 package Crypt::Primes;
 require Exporter; 
@@ -16,8 +16,8 @@ use Crypt::Random qw( makerandom makerandom_itv );
 use Math::Pari qw( PARI Mod floor );
 *import      = \&Exporter::import;
 
-@EXPORT_OK   = qw( maurer trialdiv );
-( $VERSION ) = '$Revision: 0.38 $' =~ /(\d+\.\d+)/; 
+@EXPORT_OK   = qw( maurer trialdiv rsaparams );
+( $VERSION ) = '$Revision: 0.46 $' =~ /(\d+\.\d+)/; 
 
 ## list of small primes for trial division.
 
@@ -545,6 +545,18 @@ use Math::Pari qw( PARI Mod floor );
 65267 65269 65287 65293 65309 65323 65327  65353  65357  65371  65381  65393
 65407 65413 65419 65423 65437 65447 65449  65479  65497  65519  65521  );
 
+my $l;
+my @used;
+
+sub rsaparams { 
+    my (%params) = @_; 
+    @used = ();
+    my %paramsrsa = (%params, (Relprime => 1)); 
+    my $p = maurer (%paramsrsa); print "\n" if $params{Verbosity};
+    my $q = maurer (%paramsrsa); print "\n" if $params{Verbosity};
+    return { p => $p, q => $q, e => 65537 }
+} 
+    
 sub maurer { 
 
     my ( %params ) = @_;
@@ -579,7 +591,15 @@ sub maurer {
     }
 
     my $q = maurer ( Size => floor ( $r * $k ) + 2, Verbosity => $v );
-        print "B = $B, r = $r, k = $k, q = $q\n" if $v == 2;
+    if ($params{Relprime}) { 
+        while ((grep /$q/, @used)) {
+            print "<" if $v == 1; 
+            $q = maurer ( Size => floor ( $r * $k ) + 2, Verbosity => $v, Relprime => 1 );
+        } 
+    }
+        
+    print "B = $B, r = $r, k = $k, q = $q\n" if $v == 2;
+    push @used, $q;
 
     my $o1 = PARI ( 2 * $q );
     my $o2 = PARI '2' ** PARI "@{[$k - 1]}";
@@ -610,17 +630,15 @@ sub maurer {
                     my @s = Math::Pari::factor($R) =~ m:[\[\(\;](\d+)(?=,):g;
                     push @s, ($q,2); my $p = PARI (1); for (@s) { $p *= $_ };
                     for (@s) { my $b = Mod ($a, $p) ** PARI($p/$_);
-                        if ($b == 1) { 
-                            print "@!" if $v == 1;  
+                        if ($b == 1) {
+                            print "@!" if $v == 1;
                             print "$a is not a generator\n" if $v == 2;
                             next BASE;
                         }
                     }
                 }
-
                 return { Prime => $n, Generator => $a } if $params{Generator}; 
                 return $n;
-
             }
             } 
 
@@ -670,15 +688,19 @@ sub _trialdiv_limit {
 
 =head1 NAME
 
-Crypt::Primes - Provable Prime Number Generator suitable for Cryptographic Applications. 
+Crypt::Primes - Provable Prime Number Generator suitable for Cryptographic Applications.  
 
+=head1 VERSION
+
+ $Revision: 0.46 $
+ $Date: 2001/03/04 18:26:03 $
 
 =head1 SYNOPSIS
 
     # generate a random, provable 512-bit prime.
 
-    use Crypt::Primes qw( maurer );
-    my $prime = maurer ( Size => 512 ); 
+    use Crypt::Primes qw(maurer);
+    my $prime = maurer (Size => 512); 
 
     # generate a random, provable 2048-bit prime and report 
     # progress on console.  
@@ -700,8 +722,8 @@ Crypt::Primes - Provable Prime Number Generator suitable for Cryptographic Appli
 
 =head1 WARNING 
 
-The codebase is stable, but the API will change in a future release.  Be
-warned.
+The codebase is stable, but the API will most definitely change in a future
+release.  
 
 =head1 DESCRIPTION
 
@@ -716,13 +738,16 @@ be found in Maurer's paper[1].
 Crypt::Primes is a pure perl implementation.  It uses Math::Pari for
 multiple precision integer arithmetic and number theoretic functions.
 Random numbers are gathered with Crypt::Random, a perl interface to
-/dev/u?random devices found on modern Unix operating systems.
+/dev/u?random devices found on most modern Unix operating systems.
 
-=head1 METHODS
+=head1 FUNCTIONS
+
+The following functions are availble for import.  They must be explicitely
+imported.
 
 =over 4
 
-=item B<maurer()>  
+=item B<maurer(%params)>  
 
 Generates a prime number of the specified bitsize.  Takes a hash as
 parameter and returns a Math::Pari object (prime number) or a hash reference
@@ -752,9 +777,26 @@ intractability of the discrete logarithm problem.  When this option is
 present, maurer() returns a hash reference that contains two keys, Prime and
 Generator.
 
+=item B<Relprime>
+
+When set to 1, maurer() stores intermediate primes in a class array, and
+ensures they are not used during construction of primes in the future calls
+to maurer() with Reprime => 1.  This is used by rsaparams(). 
+
 =back
 
 =over 4
+
+=item B<rsaparams(%params)>
+
+Generates two primes (p,q) and public exponent (e) of a RSA key pair. The
+key pair generated with this method is resistant to iterative encryption
+attack. See Appendix 2 of
+[1] for more information.
+
+rsaparams() takes the same arguments as maurer() with the exception of
+`Generator' and `Relprime'.  Size specifies the common bitsize of p an q.
+Returns a hash reference with keys p, q and e.
 
 =item B<trialdiv($n,$limit)>
 
@@ -789,7 +831,7 @@ generated to stress test the code.  For detailed runtime analysis see [1].
 
 =head1 SEE ALSO
 
-largeprimes(1), Crypt::Random(3)
+largeprimes(1), Crypt::Random(3), Math::Pari(3)
 
 =head1 BIBLIOGRAPHY
 
@@ -816,17 +858,17 @@ Vipul Ved Prakash, E<lt>mail@vipul.netE<gt>
 
 =head1 LICENSE 
 
-Copyright (c) 1998-2000, Vipul Ved Prakash.  All rights reserved.  This code
+Copyright (c) 1998-2001, Vipul Ved Prakash. All rights reserved. This code
 is free software; you can redistribute it and/or modify it under the same
 terms as Perl itself.
 
 =head1 TODO
 
-Maurer's algorithm generates primes of progressively larger bitsize using a
-recursive construction method.  The algorithm enters recursion with a prime
-number and bitsize of the next prime to be generated.  (Bitsizes of the
-intermediate primes are computed using a probability distribution that
-ensures generated primes are sufficiently random.)  This recursion can be
+Maurer's algorithm generates primes of progressively larger bitsize using
+a recursive construction method. The algorithm enters recursion with a
+prime number and bitsize of the next prime to be generated. (Bitsizes of
+the intermediate primes are computed using a probability distribution that
+ensures generated primes are sufficiently random.) This recursion can be
 distributed over multiple machines, participating in a competitive
 computation model, to achieve close to best running time of the algorithm.
 Support for this will be implemented some day, possibly when the next
