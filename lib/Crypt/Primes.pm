@@ -7,7 +7,7 @@
 ## This code is free software; you can redistribute it and/or modify
 ## it under the same terms as Perl itself.
 ##
-## $Id: Primes.pm,v 0.46 2001/03/04 18:26:03 vipul Exp vipul $
+## $Id: Primes.pm,v 0.49 2001/06/11 01:04:23 vipul Exp vipul $
 
 package Crypt::Primes;
 require Exporter; 
@@ -17,7 +17,7 @@ use Math::Pari qw( PARI Mod floor );
 *import      = \&Exporter::import;
 
 @EXPORT_OK   = qw( maurer trialdiv rsaparams );
-( $VERSION ) = '$Revision: 0.46 $' =~ /(\d+\.\d+)/; 
+( $VERSION ) = '$Revision: 0.49 $' =~ /(\d+\.\d+)/; 
 
 ## list of small primes for trial division.
 
@@ -547,6 +547,7 @@ use Math::Pari qw( PARI Mod floor );
 
 my $l;
 my @used;
+my @gens;
 
 sub rsaparams { 
     my (%params) = @_; 
@@ -563,6 +564,7 @@ sub maurer {
 
     my $k = $params { Size };         #-- bitsize of the required prime.
     my $v = $params { Verbosity };    #-- process reporting verbosity.
+                                      #-- whether to find intermediate generators.
     my $p0 = 20;                      #-- generate primes of bitsize less 
                                       #-- than $p0 with nextprime().
     my $maxfact = 140;                #-- bitsize of the biggest number we 
@@ -590,14 +592,17 @@ sub maurer {
         $r = 0.5;
     }
 
-    my $q = maurer ( Size => floor ( $r * $k ) + 2, Verbosity => $v );
+    my $q = maurer ( Size => floor ( $r * $k ) + 2, Verbosity => $v, 
+		     Generator => $params{Generator}, Intermediates => $params{Intermediates} );
     if ($params{Relprime}) { 
         while ((grep /$q/, @used)) {
             print "<" if $v == 1; 
-            $q = maurer ( Size => floor ( $r * $k ) + 2, Verbosity => $v, Relprime => 1 );
+            $q = maurer ( Size => floor ( $r * $k ) + 2, Verbosity => $v, Relprime => 1, 
+			  Generator => $params{Generator}, Intermediates => $params{Intermediates} );
         } 
     }
-        
+    $q = $q->{Prime} if (ref $q eq 'HASH');
+
     print "B = $B, r = $r, k = $k, q = $q\n" if $v == 2;
     push @used, $q;
 
@@ -620,14 +625,15 @@ sub maurer {
             $a = makerandom_itv( Lower => 2, Upper=> $n - 2 );
             $a = makerandom_itv( Lower => 2, Upper=> $R ) if $params{Generator};
             my $t1 = Mod (2, $n); my $t2 = Mod ($a, $n);
-            my $b = $t2 ** ( $n - 1 );
+            my $b = $t2 ** ( $n - 1 ); 
             if ( ($b == 1) && ( $q > $n ** (1/3.0) ) ) { 
                 print "$n is prime! a = $a, R = $R\n" if $v == 2;
                 print "($k)" if $v == 1;
+		my @s;
                 if ($params{Generator}) { 
                     print "computing a generator...\n" if $v == 2;
                     print "# " if $v == 1;
-                    my @s = Math::Pari::factor($R) =~ m:[\[\(\;](\d+)(?=,):g;
+                    @s = Math::Pari::factor($R) =~ m:[\[\(\;](\d+)(?=,):g;
                     push @s, ($q,2); my $p = PARI (1); for (@s) { $p *= $_ };
                     for (@s) { my $b = Mod ($a, $p) ** PARI($p/$_);
                         if ($b == 1) {
@@ -637,7 +643,10 @@ sub maurer {
                         }
                     }
                 }
-                return { Prime => $n, Generator => $a } if $params{Generator}; 
+		my @factors = ( Factors => \@s, R => $R ) if $params{Factors};
+		my @intermediates = ( Intermediates => \@used ) if $params{Intermediates};
+                return { @factors, @intermediates, Prime => $n, Generator => $a } if $params{Generator}; 
+		return { @factors, @intermediates, Prime => $n } if $params{Factors} or $params{Intermediates};
                 return $n;
             }
             } 
@@ -673,7 +682,9 @@ sub _trialdiv_limit {
 
     if ( $limit <= $PRIMES[ $end ] ) { 
         while ( ( $start + 1 ) !=  $end ) { 
-            $mid   = int ( ( $end + $start ) / 2 );
+	    use integer;
+            $mid   = int (( $end + $start ) / 2);
+	    no integer;
             $start = $mid if $limit >  $PRIMES[ $mid ];
             $end   = $mid if $limit <= $PRIMES[ $mid ];
         }
@@ -692,8 +703,8 @@ Crypt::Primes - Provable Prime Number Generator suitable for Cryptographic Appli
 
 =head1 VERSION
 
- $Revision: 0.46 $
- $Date: 2001/03/04 18:26:03 $
+ $Revision: 0.49 $
+ $Date: 2001/06/11 01:04:23 $
 
 =head1 SYNOPSIS
 
@@ -782,6 +793,19 @@ Generator.
 When set to 1, maurer() stores intermediate primes in a class array, and
 ensures they are not used during construction of primes in the future calls
 to maurer() with Reprime => 1.  This is used by rsaparams(). 
+
+=item B<Intermediates>
+
+When set to 1, maurer() returns a hash reference that contains
+(corresponding to the key 'Intermediates') a reference to an array of
+intermediate primes generated.
+
+=item B<Factors>
+
+When set to 1, maurer() returns a hash reference that contains
+(corresponding to the key 'Factors') a reference to an array of
+factors of p-1 where p is the prime generated, and also (corresponding
+to the key 'R') a divisor of p.
 
 =back
 

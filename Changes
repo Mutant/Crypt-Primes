@@ -1,0 +1,11 @@
+
+                        CHANGELOG for Crypt::RSA
+           $Id: Changes,v 1.25 2001/05/30 13:10:32 vipul Exp $
+
+--------------------------------------------------------------------------
+
+0.49                                                         June 10, 2000
+
+    * Patch by Ashish Gulhati that modifies maurer() to return
+      intermediate primes and factors.
+
