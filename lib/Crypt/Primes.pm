@@ -13,11 +13,11 @@ package Crypt::Primes;
 require Exporter; 
 use vars qw($VERSION @EXPORT_OK);
 use Crypt::Random qw( makerandom makerandom_itv );
-use Math::Pari qw( PARI Mod floor );
+use Math::Pari qw( PARI Mod floor sqrt);
 *import      = \&Exporter::import;
 
 @EXPORT_OK   = qw( maurer trialdiv rsaparams );
-( $VERSION ) = '$Revision: 0.49 $' =~ /(\d+\.\d+)/; 
+( $VERSION ) = '$Revision: 0.50 $' =~ /(\d+\.\d+)/; 
 
 ## list of small primes for trial division.
 
@@ -678,7 +678,7 @@ sub _trialdiv_limit {
     my $start = 0; 
     my $mid;
     my $end   = $#PRIMES; 
-    $limit = sqrtint($n) unless $limit;
+    $limit = int(sqrt($n)) unless $limit;
 
     if ( $limit <= $PRIMES[ $end ] ) { 
         while ( ( $start + 1 ) !=  $end ) { 
